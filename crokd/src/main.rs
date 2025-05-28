@@ -1,12 +1,18 @@
 use std::{
+    env,
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
 };
 
+const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8080";
+
 fn main() {
     println!("[crokd] application version {}", env!("CARGO_PKG_VERSION"));
 
-    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
+    let addr = Config::get_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
+    let listener = TcpListener::bind(&addr).expect("Failed to bind to address");
+
+    println!("[crokd] listen address {} ...", addr);
 
     // Handle incoming connections
     for stream in listener.incoming() {
@@ -22,6 +28,27 @@ fn main() {
     }
 }
 
+#[derive(Debug)]
+struct Config;
+
+impl Config {
+    pub fn get(key: &str) -> Option<String> {
+        let value = env::var(key);
+        match value {
+            Ok(value) => Some(value),
+            Err(_) => None,
+        }
+    }
+
+    pub fn get_default(key: &str, default: &str) -> String {
+        match Self::get(key) {
+            Some(value) => value,
+            None => default.to_string(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct Handler;
 
 impl Handler {
@@ -41,7 +68,7 @@ impl Handler {
             .collect();
 
         println!(
-            "Incoming request from {} {{bytes={}}}",
+            "[crokd] incoming request from {} {{bytes={}}}",
             remote_addr,
             request.len()
         );
