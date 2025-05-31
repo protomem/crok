@@ -2,11 +2,14 @@ use std::{
     env,
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
+    thread,
+    time::Duration,
 };
 
-use stdx::{Error, Logger};
+use stdx::{Error, Logger, sync::WorkerPool};
 
 const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8080";
+const DEFAULT_WORKER_POOL_SIZE: usize = 10;
 
 fn main() {
     let logger = Logger::default().with("crokd");
@@ -18,14 +21,19 @@ fn main() {
     ));
 
     let addr = Config::get_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
-    let tcp_srv = TcpServer::new(logger.clone(), Handler::new(logger.clone()));
 
-    match tcp_srv.listen(&addr) {
-        Ok(_) => {}
-        Err(err) => {
-            logger.log(&format!("Failed to start listen: {}", err));
-        }
-    }
+    let worker_pool = WorkerPool::build(logger.with("worker-pool"), DEFAULT_WORKER_POOL_SIZE)
+        .inspect_err(|err| logger.log(&format!("Failed to init worker pool: {}", err)))
+        .unwrap();
+
+    let handler = Handler::new(logger.with("handler"));
+
+    let tcp_server = TcpServer::new(logger.with("tcp-server"), worker_pool, handler);
+
+    tcp_server
+        .listen(&addr)
+        .inspect_err(|err| logger.log(&format!("Failed to start listen: {}", err)))
+        .unwrap();
 }
 
 #[derive(Debug)]
@@ -51,12 +59,17 @@ impl Config {
 #[derive(Debug)]
 struct TcpServer {
     logger: Logger,
+    worker_pool: WorkerPool,
     handler: Handler,
 }
 
 impl TcpServer {
-    fn new(logger: Logger, handler: Handler) -> Self {
-        TcpServer { logger, handler }
+    fn new(logger: Logger, worker_pool: WorkerPool, handler: Handler) -> Self {
+        TcpServer {
+            logger,
+            worker_pool,
+            handler,
+        }
     }
 
     fn listen(&self, addr: &str) -> Result<(), Error> {
@@ -68,7 +81,10 @@ impl TcpServer {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    self.handler.execute(stream);
+                    let handler = self.handler.clone();
+                    self.worker_pool.execute(move || {
+                        handler.execute(stream);
+                    });
                 }
                 Err(err) => {
                     self.logger
@@ -81,7 +97,7 @@ impl TcpServer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Handler {
     logger: Logger,
 }
@@ -107,6 +123,8 @@ impl Handler {
             remote_addr,
             request.len()
         ));
+
+        thread::sleep(Duration::from_secs(10));
 
         let response = format!("HTTP/1.1 200 OK\r\n\r\nHello, World!");
         stream.write_all(response.as_bytes()).unwrap();
