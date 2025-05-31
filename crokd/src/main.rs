@@ -4,6 +4,8 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 
+use stdx::Error;
+
 const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8080";
 
 fn main() {
@@ -21,7 +23,7 @@ fn main() {
     match tcp_srv.listen(&addr) {
         Ok(_) => {}
         Err(err) => {
-            logger.log(&format!("Error: {}", err));
+            logger.log(&format!("Failed to start listen: {}", err));
         }
     }
 }
@@ -78,9 +80,9 @@ impl TcpServer {
         TcpServer { logger, handler }
     }
 
-    fn listen(&self, addr: &str) -> Result<(), String> {
-        let listener = TcpListener::bind(&addr)
-            .map_err(|err| format!("Failed to bind: {}", err.to_string()))?;
+    fn listen(&self, addr: &str) -> Result<(), Error> {
+        let listener =
+            TcpListener::bind(&addr).map_err(|err| Error::from(err).wrap("bind address"))?;
 
         self.logger.log(&format!("Listen address {} ...", addr));
 
@@ -90,7 +92,8 @@ impl TcpServer {
                     self.handler.execute(stream);
                 }
                 Err(err) => {
-                    self.logger.log(&format!("Error: {}", err));
+                    self.logger
+                        .log(&format!("Failed to accept connection: {}", err));
                 }
             }
         }

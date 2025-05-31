@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "crokd"
 version = "0.1.0"
+dependencies = [
+ "stdx",
+]
 
 [[package]]
 name = "stdx"
