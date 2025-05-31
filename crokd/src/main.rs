@@ -16,19 +16,12 @@ fn main() {
     ));
 
     let addr = Config::get_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
-    let listener = TcpListener::bind(&addr).expect("Failed to bind to address");
+    let tcp_srv = TcpServer::new(logger.clone(), Handler::new(logger.clone()));
 
-    logger.log(&format!("Listen address {} ...", addr));
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let handler = Handler::new(logger.with("tcp-server"));
-                handler.execute(stream);
-            }
-            Err(err) => {
-                logger.log(&format!("Error: {}", err));
-            }
+    match tcp_srv.listen(&addr) {
+        Ok(_) => {}
+        Err(err) => {
+            logger.log(&format!("Error: {}", err));
         }
     }
 }
@@ -71,6 +64,38 @@ impl Logger {
 
     fn full_context(&self) -> String {
         self.context_stack.join("")
+    }
+}
+
+#[derive(Debug)]
+struct TcpServer {
+    logger: Logger,
+    handler: Handler,
+}
+
+impl TcpServer {
+    fn new(logger: Logger, handler: Handler) -> Self {
+        TcpServer { logger, handler }
+    }
+
+    fn listen(&self, addr: &str) -> Result<(), String> {
+        let listener = TcpListener::bind(&addr)
+            .map_err(|err| format!("Failed to bind: {}", err.to_string()))?;
+
+        self.logger.log(&format!("Listen address {} ...", addr));
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    self.handler.execute(stream);
+                }
+                Err(err) => {
+                    self.logger.log(&format!("Error: {}", err));
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
