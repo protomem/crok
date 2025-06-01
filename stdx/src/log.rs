@@ -1,9 +1,12 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 #[derive(Debug, Default, Clone)]
 pub struct Logger {
     constraint_level: Level,
     level: Level,
     // TODO: To link list?
     context_stack: Vec<String>,
+    noop: bool,
 }
 
 impl Logger {
@@ -25,13 +28,24 @@ impl Logger {
         new_logger
     }
 
+    pub fn noop(&self) -> Self {
+        let mut new_logger = self.clone();
+        new_logger.noop = true;
+        new_logger
+    }
+
     pub fn log(&self, message: &str) {
+        if self.noop {
+            return;
+        }
+
         if self.constraint_level > self.level {
             return;
         }
 
         println!(
-            "{} {} {}",
+            "{} {} {} {}",
+            self.timestamp(),
             self.level.to_string(),
             self.full_context(),
             message
@@ -40,6 +54,13 @@ impl Logger {
 
     fn full_context(&self) -> String {
         self.context_stack.join("")
+    }
+
+    fn timestamp(&self) -> String {
+        let now = SystemTime::now();
+        // TODO: Format the timestamp in a more readable format
+        let duration = now.duration_since(UNIX_EPOCH).unwrap();
+        format!("{:?}.{:03}", duration.as_secs(), duration.subsec_millis())
     }
 }
 

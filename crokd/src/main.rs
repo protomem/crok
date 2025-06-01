@@ -28,9 +28,16 @@ fn main() {
 
     let addr = env::get_with_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
 
-    let worker_pool = WorkerPool::build(sys_logger.with("worker-pool"), DEFAULT_WORKER_POOL_SIZE)
-        .inspect_err(|err| logger.log(&format!("Failed to init worker pool: {}", err)))
-        .unwrap();
+    let worker_pool = WorkerPool::build(
+        sys_logger.with("worker-pool").noop(),
+        DEFAULT_WORKER_POOL_SIZE,
+    )
+    .inspect_err(|err| {
+        sys_logger
+            .with_level(LogLevel::SystemError)
+            .log(&format!("Failed to init worker pool: {}", err))
+    })
+    .unwrap();
 
     let handler = Handler::new(logger.with("handler"));
 
@@ -38,7 +45,11 @@ fn main() {
 
     tcp_server
         .listen(&addr)
-        .inspect_err(|err| logger.log(&format!("Failed to start listen: {}", err)))
+        .inspect_err(|err| {
+            sys_logger
+                .with_level(LogLevel::SystemError)
+                .log(&format!("Failed to start listen: {}", err))
+        })
         .unwrap();
 }
 
