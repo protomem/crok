@@ -1,12 +1,11 @@
 use std::{
-    env,
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     thread,
     time::Duration,
 };
 
-use stdx::{Error, Logger, sync::WorkerPool};
+use stdx::{Error, Logger, env, sync::WorkerPool};
 
 const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_WORKER_POOL_SIZE: usize = 10;
@@ -20,7 +19,7 @@ fn main() {
         env!("CARGO_PKG_VERSION")
     ));
 
-    let addr = Config::get_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
+    let addr = env::get_with_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
 
     let worker_pool = WorkerPool::build(logger.with("worker-pool"), DEFAULT_WORKER_POOL_SIZE)
         .inspect_err(|err| logger.log(&format!("Failed to init worker pool: {}", err)))
@@ -34,26 +33,6 @@ fn main() {
         .listen(&addr)
         .inspect_err(|err| logger.log(&format!("Failed to start listen: {}", err)))
         .unwrap();
-}
-
-#[derive(Debug)]
-struct Config;
-
-impl Config {
-    pub fn get(key: &str) -> Option<String> {
-        let value = env::var(key);
-        match value {
-            Ok(value) => Some(value),
-            Err(_) => None,
-        }
-    }
-
-    pub fn get_default(key: &str, default: &str) -> String {
-        match Self::get(key) {
-            Some(value) => value,
-            None => default.to_string(),
-        }
-    }
 }
 
 #[derive(Debug)]
