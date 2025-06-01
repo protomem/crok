@@ -5,13 +5,20 @@ use std::{
     time::Duration,
 };
 
-use stdx::{Error, Logger, env, sync::WorkerPool};
+use stdx::{Error, Logger, env, log::Level as LogLevel, sync::WorkerPool};
 
 const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_WORKER_POOL_SIZE: usize = 10;
 
 fn main() {
-    let logger = Logger::default().with("crokd");
+    let logger = Logger::default()
+        .with_constraint(LogLevel::Debug)
+        .with_level(LogLevel::Debug)
+        .with("crokd");
+
+    let sys_logger = logger
+        .with_constraint(LogLevel::System)
+        .with_level(LogLevel::System);
 
     logger.log("Starting application ...");
     logger.log(&format!(
@@ -21,13 +28,13 @@ fn main() {
 
     let addr = env::get_with_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
 
-    let worker_pool = WorkerPool::build(logger.with("worker-pool"), DEFAULT_WORKER_POOL_SIZE)
+    let worker_pool = WorkerPool::build(sys_logger.with("worker-pool"), DEFAULT_WORKER_POOL_SIZE)
         .inspect_err(|err| logger.log(&format!("Failed to init worker pool: {}", err)))
         .unwrap();
 
     let handler = Handler::new(logger.with("handler"));
 
-    let tcp_server = TcpServer::new(logger.with("tcp-server"), worker_pool, handler);
+    let tcp_server = TcpServer::new(sys_logger.with("tcp-server"), worker_pool, handler);
 
     tcp_server
         .listen(&addr)
@@ -67,6 +74,7 @@ impl TcpServer {
                 }
                 Err(err) => {
                     self.logger
+                        .with_level(LogLevel::SystemError)
                         .log(&format!("Failed to accept connection: {}", err));
                 }
             }

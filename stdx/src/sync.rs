@@ -3,7 +3,7 @@ use std::{
     thread,
 };
 
-use crate::{Logger, error::Error};
+use crate::{Logger, error::Error, log::Level as LogLevel};
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
@@ -17,7 +17,7 @@ pub struct WorkerPool {
 impl WorkerPool {
     pub fn build(logger: Logger, size: usize) -> Result<WorkerPool, Error> {
         if size == 0 {
-            return Err(Error::from("N"));
+            return Err(Error::from("Number of workers must be greater than zero"));
         }
 
         Ok(Self::new(logger, size))
@@ -46,6 +46,7 @@ impl WorkerPool {
         let job = Box::new(_callback);
         let _ = self.sender.as_ref().unwrap().send(job).inspect_err(|err| {
             self.logger
+                .with_level(LogLevel::SystemError)
                 .log(&format!("Error sending job to worker pool: {}", err))
         });
     }
