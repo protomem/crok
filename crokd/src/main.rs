@@ -10,6 +10,44 @@ use stdx::{Error, Logger, env, log::Level as LogLevel, sync::WorkerPool};
 const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_WORKER_POOL_SIZE: usize = 10;
 
+#[derive(Debug)]
+struct Config {
+    pub version: String,
+    pub http_addr: String,
+    pub worker_pool_size: usize,
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self, Error> {
+        let mut cfg = Self::default();
+
+        cfg.version = env!("CARGO_PKG_VERSION").to_string();
+
+        cfg.http_addr =
+            env::get_with_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR.to_string().as_str())
+                .to_string();
+
+        cfg.worker_pool_size = env::get_with_default(
+            "CROKD_WORKER_POOL_SIZE",
+            DEFAULT_WORKER_POOL_SIZE.to_string().as_str(),
+        )
+        .parse::<usize>()
+        .map_err(|err| Error::from(err.to_string()).wrap("invalid worker pool size"))?;
+
+        Ok(cfg)
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            version: "0.0.1".to_string(),
+            http_addr: DEFAULT_HTTP_ADDR.to_string(),
+            worker_pool_size: DEFAULT_WORKER_POOL_SIZE,
+        }
+    }
+}
+
 fn main() {
     let logger = Logger::default()
         .with_constraint(LogLevel::Debug)
@@ -20,31 +58,33 @@ fn main() {
         .with_constraint(LogLevel::System)
         .with_level(LogLevel::System);
 
+    let cfg = Config::from_env()
+        .inspect(|_| logger.log("Inintializing config ..."))
+        .inspect_err(|err| {
+            sys_logger
+                .with_level(LogLevel::SystemError)
+                .log(&format!("Failed to load config: {}", err))
+        })
+        .unwrap();
+
+    logger.log(&format!("Application version {}", cfg.version));
     logger.log("Starting application ...");
-    logger.log(&format!(
-        "Application version {}",
-        env!("CARGO_PKG_VERSION")
-    ));
 
-    let addr = env::get_with_default("CROKD_HTTP_ADDR", DEFAULT_HTTP_ADDR);
-
-    let worker_pool = WorkerPool::build(
-        sys_logger.with("worker-pool").noop(),
-        DEFAULT_WORKER_POOL_SIZE,
-    )
-    .inspect_err(|err| {
-        sys_logger
-            .with_level(LogLevel::SystemError)
-            .log(&format!("Failed to init worker pool: {}", err))
-    })
-    .unwrap();
+    let worker_pool =
+        WorkerPool::build(sys_logger.with("worker-pool").noop(), cfg.worker_pool_size)
+            .inspect_err(|err| {
+                sys_logger
+                    .with_level(LogLevel::SystemError)
+                    .log(&format!("Failed to init worker pool: {}", err))
+            })
+            .unwrap();
 
     let handler = Handler::new(logger.with("handler"));
 
     let tcp_server = TcpServer::new(sys_logger.with("tcp-server"), worker_pool, handler);
 
     tcp_server
-        .listen(&addr)
+        .listen(&cfg.http_addr)
         .inspect_err(|err| {
             sys_logger
                 .with_level(LogLevel::SystemError)
